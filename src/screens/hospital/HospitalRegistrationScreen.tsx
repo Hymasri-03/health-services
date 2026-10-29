@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import Card from '../../components/Card';
@@ -78,15 +80,49 @@ export default function HospitalRegistrationScreen({
 }: HospitalRegistrationProps = {}) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { provider, registerProvider, switchProviderMode, toggleOnlineAvailability } = useApp();
+  const route = useRoute<RouteProp<RootStackParamList, 'HospitalRegistration'>>();
+  const { provider, hospitalProfile, isCategoryRegistered, registerProvider, switchProviderMode, toggleOnlineAvailability } = useApp();
 
-  // Registration step state: 1 to 5
+  const isHospRegistered = isCategoryRegistered('hospital');
+  // If explicitly opened to edit or register, show form; otherwise open dashboard directly if already registered
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [isRegistered, setIsRegistered] = useState<boolean>(
+    route?.params?.mode === 'edit' || route?.params?.mode === 'register' ? false : isHospRegistered
+  );
+
+  useEffect(() => {
+    if (route?.params?.mode === 'edit' || route?.params?.mode === 'register') {
+      setIsRegistered(false);
+    } else if (isHospRegistered) {
+      setIsRegistered(true);
+    }
+  }, [route?.params?.mode, isHospRegistered]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (embedded) return;
+      const onBackPress = () => {
+        if (!isRegistered && currentStep > 1) {
+          handlePrevStep();
+          return true;
+        }
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('Main', { screen: 'Home' } as any);
+        }
+        return true;
+      };
+      const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => backSub.remove();
+    }, [embedded, isRegistered, currentStep, navigation])
+  );
+
+  const activeHosp = hospitalProfile || provider;
 
   // Step 1: Hospital Identity & Beds
   const [hospitalName, setHospitalName] = useState(
-    provider.type === 'hospital' ? provider.name : 'Metro Apex Super-Specialty Hospital',
+    activeHosp?.name || 'Apollo LifeCare Super Speciality Hospital',
   );
   const [hospitalType, setHospitalType] = useState(HOSPITAL_TYPES[0]);
   const [totalBeds, setTotalBeds] = useState('180');
@@ -110,7 +146,7 @@ export default function HospitalRegistrationScreen({
 
   // Step 2: Regulatory & Accreditations
   const [ceaLicenseNumber, setCeaLicenseNumber] = useState(
-    provider.type === 'hospital' ? provider.licenseNumber : 'CEA-KA-2024-88412',
+    activeHosp?.licenseNumber || 'HOSP-KA-BLR-2024-8841',
   );
   const [accreditation, setAccreditation] = useState(ACCREDITATION_LEVELS[0]);
   const [bmwAuthNumber, setBmwAuthNumber] = useState('KSPCB-BMW-2025-4190');
@@ -119,27 +155,33 @@ export default function HospitalRegistrationScreen({
   const [superintendentName, setSuperintendentName] = useState('Dr. Arvind K. Rao, MD, FRCS');
   const [superintendentRegNo, setSuperintendentRegNo] = useState('KMC-1998-38291');
 
-  // Phone number: DISABLED DEFAULT SELECTION - user selects manually
-  const [selectedPhoneOption, setSelectedPhoneOption] = useState<string | null>(null);
-  const [adminPhone, setAdminPhone] = useState('');
+  // Phone number: Manual or pre-filled from registered profile
+  const [selectedPhoneOption, setSelectedPhoneOption] = useState<string | null>('mobile');
+  const [adminPhone, setAdminPhone] = useState(
+    activeHosp?.phone ? activeHosp.phone.replace('+91 ', '') : '9820112345'
+  );
   const [emergencyHotline, setEmergencyHotline] = useState('080-23456789');
-  const [hospitalEmail, setHospitalEmail] = useState('admin@metroapex.onebuddy.health');
+  const [hospitalEmail, setHospitalEmail] = useState(
+    activeHosp?.email || 'partner@apollolifecare.org'
+  );
 
   // Premises & Location
-  const [campusAddress, setCampusAddress] = useState('Campus 1, Health City Ring Road');
-  const [city, setCity] = useState('Bengaluru');
-  const [stateName, setStateName] = useState('Karnataka');
-  const [pincode, setPincode] = useState('560034');
+  const [campusAddress, setCampusAddress] = useState(
+    activeHosp?.address || 'Plot 42, Healthcare Boulevard, HSR Layout Sector 2'
+  );
+  const [city, setCity] = useState(activeHosp?.city || 'Bengaluru');
+  const [stateName, setStateName] = useState(activeHosp?.state || 'Karnataka');
+  const [pincode, setPincode] = useState(activeHosp?.pincode || '560102');
 
   // Step 4: Regulatory Document Uploads
   const [uploadedCeaDoc, setUploadedCeaDoc] = useState('CEA_Registration_Certificate.pdf');
   const [uploadedBmwDoc, setUploadedBmwDoc] = useState('BioMedical_Waste_Clearance.pdf');
 
   // Step 5: Bank Settlement & Legal Declaration
-  const [bankName, setBankName] = useState('HDFC Bank');
-  const [accountNumber, setAccountNumber] = useState('50100458923412');
-  const [ifscCode, setIfscCode] = useState('HDFC0001234');
-  const [upiId, setUpiId] = useState('metroapex@upi');
+  const [bankName, setBankName] = useState(activeHosp?.bankDetails?.bankName || 'HDFC Bank');
+  const [accountNumber, setAccountNumber] = useState(activeHosp?.bankDetails?.accountNumber || '50200088921475');
+  const [ifscCode, setIfscCode] = useState(activeHosp?.bankDetails?.ifscCode || 'HDFC0001245');
+  const [upiId, setUpiId] = useState(activeHosp?.bankDetails?.upiId || 'apollolifecare@hdfcbank');
   const [isDeclared, setIsDeclared] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -297,6 +339,12 @@ export default function HospitalRegistrationScreen({
 
     // Keep the user within the registered hospital service dashboard without redirecting to Home!
     setIsRegistered(true);
+    Alert.alert(
+      isHospRegistered ? 'Changes Updated' : 'Registration Complete',
+      isHospRegistered
+        ? 'Your hospital details, bed capacity, and department setup have been updated successfully.'
+        : 'Hospital registration completed successfully. Welcome to OneBuddy Medical!'
+    );
     onComplete?.();
   };
 
@@ -308,15 +356,28 @@ export default function HospitalRegistrationScreen({
     return (
       <ContainerComponent {...(containerProps as any)}>
         {/* Hospital Dashboard Header */}
-        <View style={styles.topHeader}>
+        <View style={[styles.topHeader, embedded && styles.topHeaderEmbedded]}>
+          {!embedded && (
+            <Pressable
+              style={styles.backBtn}
+              onPress={() => {
+                navigation.navigate('Main', { screen: 'Home' } as any);
+              }}
+              accessibilityLabel="Back to Live Operations"
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+            </Pressable>
+          )}
+
           <View style={styles.headerTitleContainer}>
             <View style={styles.headerTitleRow}>
               <Ionicons name="business" size={16} color="#0094D4" />
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Text style={[styles.headerTitle, embedded && { color: '#0F172A' }]} numberOfLines={1}>
                 {hospitalName}
               </Text>
             </View>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
+            <Text style={[styles.headerSubtitle, embedded && { color: '#64748B' }]} numberOfLines={1}>
               Registered Hospital • CEA: {ceaLicenseNumber}
             </Text>
           </View>
@@ -387,6 +448,16 @@ export default function HospitalRegistrationScreen({
                 </Text>
               </Pressable>
             </View>
+
+            {/* Quick Action to Update Changes */}
+            <Pressable
+              style={styles.heroUpdateBtn}
+              onPress={() => setIsRegistered(false)}
+              accessibilityLabel="Update Hospital Changes"
+            >
+              <Ionicons name="create-outline" size={16} color="#0094D4" />
+              <Text style={styles.heroUpdateBtnText}>Update Hospital Details & Beds</Text>
+            </Pressable>
           </Card>
 
           {/* Infrastructure Metrics Overview */}
@@ -445,11 +516,13 @@ export default function HospitalRegistrationScreen({
               onPress={() => navigation.navigate('HospitalDoctors')}
               accessibilityLabel="Manage Doctor Rosters"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#E6F6FC' }]}>
-                <Ionicons name="people" size={22} color="#0094D4" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#E6F6FC' }]}>
+                  <Ionicons name="people" size={22} color="#0094D4" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Doctor Rosters</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Manage OPD consulting specialists</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Doctor Rosters</Text>
-              <Text style={styles.actionCardSub}>Manage OPD consulting specialists</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={styles.actionLinkText}>Open Rosters</Text>
                 <Ionicons name="arrow-forward" size={12} color="#0094D4" />
@@ -461,11 +534,13 @@ export default function HospitalRegistrationScreen({
               onPress={() => navigation.navigate('HospitalPackages')}
               accessibilityLabel="Manage Health Packages"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#E6F6FC' }]}>
-                <Ionicons name="cube" size={22} color="#0094D4" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#E6F6FC' }]}>
+                  <Ionicons name="cube" size={22} color="#0094D4" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Health Packages</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Preventive health checkup plans</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Health Packages</Text>
-              <Text style={styles.actionCardSub}>Preventive health checkup plans</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={[styles.actionLinkText, { color: '#0094D4' }]}>Open Packages</Text>
                 <Ionicons name="arrow-forward" size={12} color="#0094D4" />
@@ -477,11 +552,13 @@ export default function HospitalRegistrationScreen({
               onPress={() => navigation.navigate('Main', { screen: 'BookingsOrders' } as any)}
               accessibilityLabel="OP Consultation Bookings"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#DCFCE7' }]}>
-                <Ionicons name="calendar" size={22} color="#16A34A" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#DCFCE7' }]}>
+                  <Ionicons name="calendar" size={22} color="#16A34A" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>OP Bookings Desk</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Incoming patient appointments</Text>
               </View>
-              <Text style={styles.actionCardTitle}>OP Bookings Desk</Text>
-              <Text style={styles.actionCardSub}>Incoming patient appointments</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={[styles.actionLinkText, { color: '#16A34A' }]}>View Bookings</Text>
                 <Ionicons name="arrow-forward" size={12} color="#16A34A" />
@@ -490,16 +567,39 @@ export default function HospitalRegistrationScreen({
 
             <Pressable
               style={styles.actionCard}
-              onPress={() => setIsRegistered(false)}
-              accessibilityLabel="Edit Hospital Facility"
+              onPress={() => {
+                switchProviderMode('hospital');
+                navigation.navigate('Main', { screen: 'Home' } as any);
+              }}
+              accessibilityLabel="Enter Live Operations Hub"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#E6F6FC' }]}>
-                <Ionicons name="create-outline" size={22} color="#0094D4" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#F0FDF4' }]}>
+                  <Ionicons name="pulse" size={22} color="#16A34A" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Live Operations Hub</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Real-time appointments & beds</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Edit Facility Info</Text>
-              <Text style={styles.actionCardSub}>Update licenses, beds & phone</Text>
               <View style={styles.actionLinkRow}>
-                <Text style={[styles.actionLinkText, { color: '#0094D4' }]}>Edit Setup</Text>
+                <Text style={[styles.actionLinkText, { color: '#16A34A' }]}>Enter Live Ops</Text>
+                <Ionicons name="arrow-forward" size={12} color="#16A34A" />
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.actionCard}
+              onPress={() => setIsRegistered(false)}
+              accessibilityLabel="Update Hospital Facility"
+            >
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#E6F6FC' }]}>
+                  <Ionicons name="create-outline" size={22} color="#0094D4" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Update Changes</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Update licenses, beds & phone</Text>
+              </View>
+              <View style={styles.actionLinkRow}>
+                <Text style={[styles.actionLinkText, { color: '#0094D4' }]}>Update Changes</Text>
                 <Ionicons name="arrow-forward" size={12} color="#0094D4" />
               </View>
             </Pressable>
@@ -555,13 +655,13 @@ export default function HospitalRegistrationScreen({
             onPress={() => {
               if (currentStep > 1) {
                 handlePrevStep();
-              } else if (navigation.canGoBack()) {
-                navigation.goBack();
+              } else if (isHospRegistered) {
+                setIsRegistered(true);
               } else {
                 navigation.navigate('Main', { screen: 'Home' } as any);
               }
             }}
-            accessibilityLabel={currentStep > 1 ? `Back to Step ${currentStep - 1}` : 'Back'}
+            accessibilityLabel={currentStep > 1 ? `Back to Step ${currentStep - 1}` : (isHospRegistered ? 'Back to Dashboard' : 'Back to Live Operations')}
             hitSlop={8}
           >
             <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
@@ -570,15 +670,21 @@ export default function HospitalRegistrationScreen({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="business" size={17} color="#0094D4" />
-              <Text style={styles.headerTitle}>Hospital Registration</Text>
+              <Text style={styles.headerTitle}>
+                {isHospRegistered ? 'Update Hospital Details' : 'Hospital Registration'}
+              </Text>
             </View>
             <Text style={styles.headerSubtitle}>
-              Step {currentStep} of 5: {STEPS[currentStep - 1]?.title}
+              {isHospRegistered
+                ? `Update Step ${currentStep} of 5: ${STEPS[currentStep - 1]?.title}`
+                : `Step ${currentStep} of 5: ${STEPS[currentStep - 1]?.title}`}
             </Text>
           </View>
 
           <View style={styles.stepBadgePill}>
-            <Text style={styles.stepBadgeText}>Step {currentStep}/5</Text>
+            <Text style={styles.stepBadgeText}>
+              {isHospRegistered ? `Update ${currentStep}/5` : `Step ${currentStep}/5`}
+            </Text>
           </View>
         </View>
       )}
@@ -1415,10 +1521,12 @@ export default function HospitalRegistrationScreen({
                 <Pressable
                   style={[styles.primaryStepBtn, { flex: 1, marginTop: 0, backgroundColor: '#0094D4' }]}
                   onPress={handleRegisterHospital}
-                  accessibilityLabel="Complete Hospital Registration"
+                  accessibilityLabel={isHospRegistered ? 'Update Hospital Changes' : 'Complete Hospital Registration'}
                 >
-                  <Ionicons name="business" size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryStepBtnText} numberOfLines={1}>Complete</Text>
+                  <Ionicons name={isHospRegistered ? 'save-outline' : 'business'} size={18} color="#FFFFFF" />
+                  <Text style={styles.primaryStepBtnText} numberOfLines={1}>
+                    {isHospRegistered ? 'Update Changes' : 'Complete Registration'}
+                  </Text>
                 </Pressable>
               </View>
             </>
@@ -1444,6 +1552,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
     gap: 8,
+  },
+  topHeaderEmbedded: {
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#E2E8F0',
   },
   backBtn: {
     width: 36,
@@ -2076,14 +2188,18 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 3,
     textAlign: 'center',
+    minHeight: 28,
   },
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   actionCard: {
-    width: '48%',
+    width: '48.5%',
+    minHeight: 145,
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -2191,5 +2307,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#EF4444',
     fontWeight: '600',
+  },
+  heroUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#E6F6FC',
+    borderWidth: 1.5,
+    borderColor: '#BAE6F9',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    marginTop: spacing.md,
+  },
+  heroUpdateBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0094D4',
   },
 });

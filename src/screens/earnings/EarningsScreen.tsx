@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  Alert,
+  BackHandler,
   FlatList,
   Modal,
   Pressable,
@@ -11,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useApp } from '../../context/AppContext';
 import { colors, radius, spacing } from '../../theme/colors';
 import Card from '../../components/Card';
@@ -37,20 +39,63 @@ export default function EarningsScreen() {
   });
 
   const handleWithdraw = () => {
-    const amt = parseFloat(withdrawAmount);
-    if (isNaN(amt) || amt <= 0 || amt > earnings.pendingPayout) {
+    const cleanAmount = withdrawAmount.replace(/[^0-9.]/g, '');
+    const amt = parseFloat(cleanAmount);
+    if (!cleanAmount || isNaN(amt) || amt <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid payout amount to withdraw.');
+      return;
+    }
+
+    if (amt > earnings.pendingPayout) {
+      Alert.alert(
+        'Insufficient Balance',
+        `The requested amount of ₹${amt.toLocaleString('en-IN')} exceeds your available eligible balance of ₹${earnings.pendingPayout.toLocaleString('en-IN')}.`
+      );
       return;
     }
 
     const success = requestPayout(amt);
     if (success) {
       setWithdrawModalVisible(false);
+      Alert.alert(
+        'Disbursal Initiated Successfully',
+        `₹${amt.toLocaleString('en-IN')} has been requested for direct settlement to ${provider.bankDetails?.bankName || 'Verified Bank'} (A/C ••••${(provider.bankDetails?.accountNumber || '1234').slice(-4)}).\n\nFunds will be credited via IMPS/NEFT within 2-4 hours.`,
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert('Withdrawal Failed', 'Could not process payout. Please check your balance and try again.');
     }
   };
 
   const handleDownloadStatement = () => {
     // Statement processed directly
   };
+
+  const handleGoBack = useCallback(() => {
+    if (withdrawModalVisible) {
+      setWithdrawModalVisible(false);
+      return true;
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return true;
+    }
+    const state = navigation.getState();
+    const routeNames = ((state as any)?.routeNames || []) as string[];
+    if (routeNames.includes('Home')) {
+      (navigation as any).navigate('Home');
+    } else {
+      (navigation as any).navigate('Main', { screen: 'Home' });
+    }
+    return true;
+  }, [navigation, withdrawModalVisible]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', handleGoBack);
+      return () => sub.remove();
+    }, [handleGoBack])
+  );
 
   const renderTransactionItem = ({ item }: { item: MedicalTransaction }) => {
     const isWithdrawal = item.type === 'bank_withdrawal';
@@ -158,21 +203,15 @@ export default function EarningsScreen() {
       <View style={styles.screenHeader}>
         <Pressable
           style={styles.backBtn}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              (navigation as any).navigate('Main', { screen: 'Home' });
-            }
-          }}
-          accessibilityLabel="Back to Home"
+          onPress={handleGoBack}
+          accessibilityLabel="Back to Previous"
           hitSlop={8}
         >
           <Ionicons name="arrow-back" size={20} color={colors.text} />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.screenTitle}>Earnings & Payouts</Text>
-          <Text style={styles.screenSubtitle}>Transparent breakdown & automated bank disbursal</Text>
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={styles.screenTitle} numberOfLines={1}>Earnings & Payouts</Text>
+          <Text style={styles.screenSubtitle} numberOfLines={1}>Transparent breakdown & automated bank disbursal</Text>
         </View>
         <Pressable style={styles.downloadBtn} onPress={handleDownloadStatement}>
           <Ionicons name="download-outline" size={16} color={colors.primary} />
@@ -232,7 +271,17 @@ export default function EarningsScreen() {
 
             <Pressable
               style={styles.requestPayoutBtn}
-              onPress={() => setWithdrawModalVisible(true)}
+              onPress={() => {
+                if (earnings.pendingPayout <= 0) {
+                  Alert.alert(
+                    'No Available Balance',
+                    'Your eligible settlement balance is currently ₹0. Once appointments or medicine orders are completed, funds will become available for withdrawal.'
+                  );
+                  return;
+                }
+                setWithdrawAmount(String(earnings.pendingPayout));
+                setWithdrawModalVisible(true);
+              }}
             >
               <Ionicons name="card-outline" size={15} color="#FFFFFF" />
               <Text style={styles.requestPayoutText}>Withdraw to Bank</Text>
@@ -321,18 +370,81 @@ export default function EarningsScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.modalSub}>
-              Available Eligible Balance: ₹{earnings.pendingPayout.toLocaleString('en-IN')}
-            </Text>
+            <View style={styles.modalBalanceBox}>
+              <Text style={styles.modalBalanceLabel}>Available Eligible Balance</Text>
+              <Text style={styles.modalBalanceAmount}>
+                ₹{earnings.pendingPayout.toLocaleString('en-IN')}
+              </Text>
+            </View>
 
             <Text style={styles.inputLabel}>Payout Amount (₹)</Text>
-            <TextInput
-              style={styles.modalInput}
-              keyboardType="numeric"
-              value={withdrawAmount}
-              onChangeText={setWithdrawAmount}
-              placeholder="Enter amount"
-            />
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputCurrencyPrefix}>₹</Text>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="numeric"
+                value={withdrawAmount}
+                onChangeText={(text) => setWithdrawAmount(text.replace(/[^0-9.]/g, ''))}
+                placeholder="Enter amount"
+                placeholderTextColor={colors.textMuted}
+              />
+              {withdrawAmount.length > 0 && (
+                <Pressable onPress={() => setWithdrawAmount('')} style={{ padding: 4 }}>
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Quick Amount Selector Chips */}
+            <View style={styles.quickAmountsRow}>
+              {[
+                { label: 'Full Balance', value: earnings.pendingPayout },
+                { label: '₹1,000', value: 1000 },
+                { label: '₹2,500', value: 2500 },
+                { label: '₹5,000', value: 5000 },
+              ]
+                .filter((p) => p.value <= earnings.pendingPayout && p.value > 0)
+                .map((p, idx) => (
+                  <Pressable
+                    key={idx}
+                    style={[
+                      styles.quickAmountChip,
+                      String(p.value) === withdrawAmount.replace(/[^0-9.]/g, '') &&
+                        styles.quickAmountChipActive,
+                    ]}
+                    onPress={() => setWithdrawAmount(String(p.value))}
+                  >
+                    <Text
+                      style={[
+                        styles.quickAmountText,
+                        String(p.value) === withdrawAmount.replace(/[^0-9.]/g, '') &&
+                          styles.quickAmountTextActive,
+                      ]}
+                    >
+                      {p.label}
+                    </Text>
+                  </Pressable>
+                ))}
+            </View>
+
+            {/* Dynamic Remaining Balance */}
+            {(() => {
+              const parsed = parseFloat(withdrawAmount.replace(/[^0-9.]/g, '')) || 0;
+              const remaining = Math.max(0, earnings.pendingPayout - parsed);
+              const isOver = parsed > earnings.pendingPayout;
+              return (
+                <Text
+                  style={[
+                    styles.remainingBalanceText,
+                    isOver && { color: colors.danger, fontWeight: '700' },
+                  ]}
+                >
+                  {isOver
+                    ? `⚠️ Amount exceeds balance by ₹${(parsed - earnings.pendingPayout).toLocaleString('en-IN')}`
+                    : `Remaining balance after payout: ₹${remaining.toLocaleString('en-IN')}`}
+                </Text>
+              );
+            })()}
 
             <View style={styles.destBankBox}>
               <Text style={styles.destBankLabel}>Destination Bank Account:</Text>
@@ -613,6 +725,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   txnTitle: {
     fontSize: 13,
@@ -691,21 +804,85 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
+  modalBalanceBox: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  modalBalanceLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E40AF',
+    textTransform: 'uppercase',
+  },
+  modalBalanceAmount: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E3A8A',
+    marginTop: 2,
+  },
   inputLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  modalInput: {
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: colors.text,
     backgroundColor: colors.background,
+  },
+  inputCurrencyPrefix: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    marginRight: 4,
+  },
+  modalInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  quickAmountsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  quickAmountChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: radius.full,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickAmountChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  quickAmountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  quickAmountTextActive: {
+    color: '#FFFFFF',
+  },
+  remainingBalanceText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 8,
+    fontWeight: '500',
   },
   destBankBox: {
     backgroundColor: colors.background,

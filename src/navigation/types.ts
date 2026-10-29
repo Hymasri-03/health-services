@@ -19,9 +19,9 @@ export type RootStackParamList = {
   Account: undefined;
   Profile: undefined;
   RegisterProvider?: { category?: 'hospital' | 'doctor' | 'pharmacy'; initialRole?: 'hospital' | 'doctor' | 'pharmacy' };
-  HospitalRegistration: undefined;
-  DoctorRegistration?: { doctor?: HospitalDoctor; mode?: 'add' | 'edit' };
-  PharmacyRegistration: undefined;
+  HospitalRegistration?: { mode?: 'dashboard' | 'edit' | 'register' };
+  DoctorRegistration?: { doctor?: HospitalDoctor; mode?: 'add' | 'edit' | 'dashboard' | 'register' };
+  PharmacyRegistration?: { mode?: 'dashboard' | 'edit' | 'register' };
   RegisterDoctor?: { doctor?: HospitalDoctor; mode?: 'add' | 'edit' };
   HospitalDoctors: undefined;
   AddEditDoctor?: { doctor?: HospitalDoctor };

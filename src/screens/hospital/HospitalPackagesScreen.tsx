@@ -135,9 +135,9 @@ export default function HospitalPackagesScreen() {
         >
           <Ionicons name="arrow-back" size={20} color={colors.text} />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Promotional Health Packages</Text>
-          <Text style={styles.headerSubtitle}>Deals displayed on One Buddy Customer Home</Text>
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>Promotional Health Packages</Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>Deals displayed on One Buddy Customer Home</Text>
         </View>
         <Pressable style={styles.createBtn} onPress={() => setModalVisible(true)}>
           <Ionicons name="add" size={16} color="#FFFFFF" />
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: colors.text,
   },

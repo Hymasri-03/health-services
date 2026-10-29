@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import Card from '../../components/Card';
@@ -56,27 +58,67 @@ export default function PharmacyRegistrationScreen({
 }: PharmacyRegistrationProps = {}) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { provider, registerProvider, switchProviderMode, toggleOnlineAvailability } = useApp();
+  const route = useRoute<RouteProp<RootStackParamList, 'PharmacyRegistration'>>();
+  const { provider, pharmacyProfile, isCategoryRegistered, registerProvider, switchProviderMode, toggleOnlineAvailability } = useApp();
 
+  const isPharmRegistered = isCategoryRegistered('pharmacy');
   // Step Tracker state
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [isRegistered, setIsRegistered] = useState<boolean>(
+    route?.params?.mode === 'edit' || route?.params?.mode === 'register' ? false : isPharmRegistered
+  );
+
+  useEffect(() => {
+    if (route?.params?.mode === 'edit' || route?.params?.mode === 'register') {
+      setIsRegistered(false);
+    } else if (isPharmRegistered) {
+      setIsRegistered(true);
+    }
+  }, [route?.params?.mode, isPharmRegistered]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (embedded) return;
+      const onBackPress = () => {
+        if (!isRegistered && currentStep > 1) {
+          handlePrevStep();
+          return true;
+        }
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('Main', { screen: 'Home' } as any);
+        }
+        return true;
+      };
+      const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => backSub.remove();
+    }, [embedded, isRegistered, currentStep, navigation])
+  );
+
+  const activePharm = pharmacyProfile || provider;
 
   // Step 1: Pharmacy Store Profile & Classification
   const [storeName, setStoreName] = useState(
-    provider.type === 'pharmacy' ? provider.name : 'Metro Meds 24x7 Pharmacy',
+    activePharm?.name || 'MedPlus Express Pharmacy & Surgical Hub'
   );
   const [pharmacyType, setPharmacyType] = useState(PHARMACY_TYPES[0]);
   const [operatingHours, setOperatingHours] = useState('08:00 AM - 11:00 PM');
   const [has24x7Service, setHas24x7Service] = useState(true);
   const [hasHomeDelivery, setHasHomeDelivery] = useState(true);
-  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState('8');
+  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(String(activePharm?.serviceRadiusKm || 8));
   const [hasColdChain, setHasColdChain] = useState(true);
   const [hasRxVerificationDesk, setHasRxVerificationDesk] = useState(true);
 
   // Step 2: Drug Licenses & Registered Pharmacist
-  const [form20License, setForm20License] = useState('KA-BGL-DRUG-20-49182');
-  const [form21License, setForm21License] = useState('KA-BGL-DRUG-21-49183');
+  const [form20License, setForm20License] = useState(
+    activePharm?.licenseNumber ? activePharm.licenseNumber.split('/')[0].trim() : 'KA-BGL-DRUG-20-49182'
+  );
+  const [form21License, setForm21License] = useState(
+    activePharm?.licenseNumber && activePharm.licenseNumber.includes('/')
+      ? activePharm.licenseNumber.split('/')[1].trim()
+      : 'KA-BGL-DRUG-21-49183'
+  );
   const [licenseExpiry, setLicenseExpiry] = useState('2028-12-31');
   const [gstin, setGstin] = useState('29ABCDE1234F1Z5');
   const [pharmacistName, setPharmacistName] = useState('Pooja Kulkarni');
@@ -85,25 +127,27 @@ export default function PharmacyRegistrationScreen({
 
   // Step 3: Premises & Contact
   const [storePhone, setStorePhone] = useState(
-    provider.type === 'pharmacy' ? provider.phone.replace('+91 ', '') : '9876543210',
+    activePharm?.phone ? activePharm.phone.replace('+91 ', '') : '9876524680'
   );
   const [storeEmail, setStoreEmail] = useState(
-    provider.type === 'pharmacy' ? provider.email : 'care@metromeds.onebuddy.health',
+    activePharm?.email || 'express@medpluspartner.com'
   );
-  const [storeAddress, setStoreAddress] = useState('Shop 4, Ground Floor, Health City Complex');
-  const [city, setCity] = useState('Bengaluru');
-  const [stateName, setStateName] = useState('Karnataka');
-  const [pincode, setPincode] = useState('560034');
+  const [storeAddress, setStoreAddress] = useState(
+    activePharm?.address || 'Shop 14, Ground Floor, Central Arcade, Koramangala 4th Block'
+  );
+  const [city, setCity] = useState(activePharm?.city || 'Bengaluru');
+  const [stateName, setStateName] = useState(activePharm?.state || 'Karnataka');
+  const [pincode, setPincode] = useState(activePharm?.pincode || '560034');
 
   // Step 4: Regulatory Document Uploads
   const [uploadedDrugDoc, setUploadedDrugDoc] = useState('Drug_License_Form_20_21.pdf');
   const [uploadedPharmDoc, setUploadedPharmDoc] = useState('Pharmacist_Council_Registration.pdf');
 
   // Step 5: Bank Settlement & Legal Declaration
-  const [bankName, setBankName] = useState('HDFC Bank');
-  const [accountNumber, setAccountNumber] = useState('50100458923412');
-  const [ifscCode, setIfscCode] = useState('HDFC0001234');
-  const [upiId, setUpiId] = useState('metromeds@upi');
+  const [bankName, setBankName] = useState(activePharm?.bankDetails?.bankName || 'HDFC Bank');
+  const [accountNumber, setAccountNumber] = useState(activePharm?.bankDetails?.accountNumber || '50200088921475');
+  const [ifscCode, setIfscCode] = useState(activePharm?.bankDetails?.ifscCode || 'HDFC0001245');
+  const [upiId, setUpiId] = useState(activePharm?.bankDetails?.upiId || 'medplus@hdfcbank');
   const [isDeclared, setIsDeclared] = useState(true);
 
   // Field inline error validation states
@@ -233,6 +277,12 @@ export default function PharmacyRegistrationScreen({
 
     switchProviderMode('pharmacy');
     setIsRegistered(true);
+    Alert.alert(
+      isPharmRegistered ? 'Changes Updated' : 'Registration Complete',
+      isPharmRegistered
+        ? 'Your pharmacy store details and delivery coverage have been updated successfully.'
+        : 'Pharmacy registration completed successfully. Welcome to OneBuddy Medical!'
+    );
     onComplete?.();
   };
 
@@ -244,15 +294,28 @@ export default function PharmacyRegistrationScreen({
     return (
       <ContainerComponent {...(containerProps as any)}>
         {/* Pharmacy Dashboard Header */}
-        <View style={styles.topHeader}>
+        <View style={[styles.topHeader, embedded && styles.topHeaderEmbedded]}>
+          {!embedded && (
+            <Pressable
+              style={styles.backBtn}
+              onPress={() => {
+                navigation.navigate('Main', { screen: 'Home' } as any);
+              }}
+              accessibilityLabel="Back to Live Operations"
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+            </Pressable>
+          )}
+
           <View style={styles.headerTitleContainer}>
             <View style={styles.headerTitleRow}>
-              <Ionicons name="flask" size={16} color="#2DD4BF" />
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Ionicons name="flask" size={16} color="#0D9488" />
+              <Text style={[styles.headerTitle, embedded && { color: '#0F172A' }]} numberOfLines={1}>
                 {storeName}
               </Text>
             </View>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
+            <Text style={[styles.headerSubtitle, embedded && { color: '#64748B' }]} numberOfLines={1}>
               Registered Pharmacy • Form 20/21: {form20License}
             </Text>
           </View>
@@ -328,6 +391,16 @@ export default function PharmacyRegistrationScreen({
                 </Text>
               </Pressable>
             </View>
+
+            {/* Quick Action to Update Changes */}
+            <Pressable
+              style={styles.heroUpdateBtn}
+              onPress={() => setIsRegistered(false)}
+              accessibilityLabel="Update Pharmacy Changes"
+            >
+              <Ionicons name="create-outline" size={16} color="#0D9488" />
+              <Text style={styles.heroUpdateBtnText}>Update Store Details & License</Text>
+            </Pressable>
           </Card>
 
           {/* Operational Metrics */}
@@ -386,11 +459,13 @@ export default function PharmacyRegistrationScreen({
               onPress={() => navigation.navigate('PharmacyInventory')}
               accessibilityLabel="Manage Pharmacy Inventory"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#CCFBF1' }]}>
-                <Ionicons name="medkit" size={22} color="#0D9488" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#CCFBF1' }]}>
+                  <Ionicons name="medkit" size={22} color="#0D9488" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Inventory Stock</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Manage medicines, prices & batches</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Inventory Stock</Text>
-              <Text style={styles.actionCardSub}>Manage medicines, prices & batches</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={styles.actionLinkText}>Open Catalog</Text>
                 <Ionicons name="arrow-forward" size={12} color="#0D9488" />
@@ -402,11 +477,13 @@ export default function PharmacyRegistrationScreen({
               onPress={() => navigation.navigate('Main', { screen: 'BookingsOrders' } as any)}
               accessibilityLabel="View Customer Orders"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#E0F2FE' }]}>
-                <Ionicons name="receipt" size={22} color="#0284C7" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#E0F2FE' }]}>
+                  <Ionicons name="receipt" size={22} color="#0284C7" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Customer Orders</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Incoming prescription orders</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Customer Orders</Text>
-              <Text style={styles.actionCardSub}>Incoming prescription orders</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={[styles.actionLinkText, { color: '#0284C7' }]}>Open Orders</Text>
                 <Ionicons name="arrow-forward" size={12} color="#0284C7" />
@@ -415,17 +492,40 @@ export default function PharmacyRegistrationScreen({
 
             <Pressable
               style={styles.actionCard}
-              onPress={() => setIsRegistered(false)}
-              accessibilityLabel="Edit Store Setup"
+              onPress={() => {
+                switchProviderMode('pharmacy');
+                navigation.navigate('Main', { screen: 'Home' } as any);
+              }}
+              accessibilityLabel="Enter Live Operations Hub"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#F1F5F9' }]}>
-                <Ionicons name="create-outline" size={22} color="#475569" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#F0FDFA' }]}>
+                  <Ionicons name="pulse" size={22} color="#0D9488" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Live Operations Hub</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Live prescription dispatch</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Edit Store Info</Text>
-              <Text style={styles.actionCardSub}>Update licenses, pharmacist & address</Text>
               <View style={styles.actionLinkRow}>
-                <Text style={[styles.actionLinkText, { color: '#475569' }]}>Edit Setup</Text>
-                <Ionicons name="arrow-forward" size={12} color="#475569" />
+                <Text style={[styles.actionLinkText, { color: '#0D9488' }]}>Enter Live Ops</Text>
+                <Ionicons name="arrow-forward" size={12} color="#0D9488" />
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.actionCard}
+              onPress={() => setIsRegistered(false)}
+              accessibilityLabel="Update Pharmacy Store Setup"
+            >
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#F0FDFA' }]}>
+                  <Ionicons name="create-outline" size={22} color="#0D9488" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Update Changes</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Update licenses, pharmacist & address</Text>
+              </View>
+              <View style={styles.actionLinkRow}>
+                <Text style={[styles.actionLinkText, { color: '#0D9488' }]}>Update Changes</Text>
+                <Ionicons name="arrow-forward" size={12} color="#0D9488" />
               </View>
             </Pressable>
           </View>
@@ -476,13 +576,13 @@ export default function PharmacyRegistrationScreen({
             onPress={() => {
               if (currentStep > 1) {
                 handlePrevStep();
-              } else if (navigation.canGoBack()) {
-                navigation.goBack();
+              } else if (isPharmRegistered) {
+                setIsRegistered(true);
               } else {
                 navigation.navigate('Main', { screen: 'Home' } as any);
               }
             }}
-            accessibilityLabel={currentStep > 1 ? `Back to Step ${currentStep - 1}` : 'Back'}
+            accessibilityLabel={currentStep > 1 ? `Back to Step ${currentStep - 1}` : (isPharmRegistered ? 'Back to Dashboard' : 'Back to Live Operations')}
             hitSlop={8}
           >
             <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
@@ -491,15 +591,21 @@ export default function PharmacyRegistrationScreen({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="flask" size={17} color="#2DD4BF" />
-              <Text style={styles.headerTitle}>Pharmacy Registration</Text>
+              <Text style={styles.headerTitle}>
+                {isPharmRegistered ? 'Update Pharmacy Details' : 'Pharmacy Registration'}
+              </Text>
             </View>
             <Text style={styles.headerSubtitle}>
-              Step {currentStep} of 5: {STEPS[currentStep - 1]?.title}
+              {isPharmRegistered
+                ? `Update Step ${currentStep} of 5: ${STEPS[currentStep - 1]?.title}`
+                : `Step ${currentStep} of 5: ${STEPS[currentStep - 1]?.title}`}
             </Text>
           </View>
 
           <View style={styles.stepBadgePill}>
-            <Text style={styles.stepBadgeText}>Step {currentStep}/5</Text>
+            <Text style={styles.stepBadgeText}>
+              {isPharmRegistered ? `Update ${currentStep}/5` : `Step ${currentStep}/5`}
+            </Text>
           </View>
         </View>
       )}
@@ -1241,10 +1347,12 @@ export default function PharmacyRegistrationScreen({
                 <Pressable
                   style={[styles.primaryStepBtn, { flex: 1, marginTop: 0, backgroundColor: '#0D9488' }]}
                   onPress={handleRegisterPharmacy}
-                  accessibilityLabel="Complete Pharmacy Registration"
+                  accessibilityLabel={isPharmRegistered ? 'Update Pharmacy Changes' : 'Complete Pharmacy Registration'}
                 >
-                  <Ionicons name="flask" size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryStepBtnText} numberOfLines={1}>Complete</Text>
+                  <Ionicons name={isPharmRegistered ? 'save-outline' : 'flask'} size={18} color="#FFFFFF" />
+                  <Text style={styles.primaryStepBtnText} numberOfLines={1}>
+                    {isPharmRegistered ? 'Update Changes' : 'Complete Registration'}
+                  </Text>
                 </Pressable>
               </View>
             </>
@@ -1270,6 +1378,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
     gap: 8,
+  },
+  topHeaderEmbedded: {
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#E2E8F0',
   },
   backBtn: {
     width: 36,
@@ -1823,14 +1935,18 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 3,
     textAlign: 'center',
+    minHeight: 28,
   },
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   actionCard: {
-    width: '48%',
+    width: '48.5%',
+    minHeight: 145,
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -1922,5 +2038,22 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'left',
     lineHeight: 18,
+  },
+  heroUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1.5,
+    borderColor: '#99F6E4',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    marginTop: spacing.md,
+  },
+  heroUpdateBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D9488',
   },
 });

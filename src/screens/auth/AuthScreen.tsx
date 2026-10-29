@@ -14,14 +14,16 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import Card from '../../components/Card';
 import { RootStackParamList } from '../../navigation/types';
+import { useApp } from '../../context/AppContext';
 
 const REGISTRATION_CATEGORIES = [
   {
     id: 'hospital' as const,
-    title: '1. Hospital Registration',
+    name: 'Hospital',
+    title: 'Hospital Services',
     badge: 'Super Speciality • Inpatient',
     subtitle: 'Clinical Establishment Act (CEA), bed strength, ICU suites, OT & 24x7 emergency setup',
-    features: ['180 Total Beds', '24 ICU Beds', '6 OT Surgical Suites'],
+    features: ['CEA Registered', '24x7 Emergency Care', 'Inpatient & ICU Care'],
     icon: 'business' as const,
     color: '#0094D4',
     lightBg: '#E6F6FC',
@@ -31,7 +33,8 @@ const REGISTRATION_CATEGORIES = [
   },
   {
     id: 'doctor' as const,
-    title: '2. Doctor Registration',
+    name: 'Doctor',
+    title: 'Doctor Practice',
     badge: 'Specialist Clinic • OPD',
     subtitle: 'MCI / State Medical Council reg, OPD clinic practice, video consults & home visit care',
     features: ['Council Verification', 'OPD Practice', 'Teleconsultations'],
@@ -44,7 +47,8 @@ const REGISTRATION_CATEGORIES = [
   },
   {
     id: 'pharmacy' as const,
-    title: '3. Pharmacy Registration',
+    name: 'Pharmacy',
+    title: 'Pharmacy Store',
     badge: 'Drug Retail • Form 20/21',
     subtitle: 'Drug Retail License Form 20 & 21, cold chain 2-8°C storage & registered pharmacist in-charge',
     features: ['Form 20/21 License', 'Cold Chain Storage', 'Home Delivery'],
@@ -59,6 +63,7 @@ const REGISTRATION_CATEGORIES = [
 
 export default function AuthScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isCategoryRegistered, switchProviderMode, hospitalProfile, doctorProfile, pharmacyProfile } = useApp();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -93,63 +98,124 @@ export default function AuthScreen() {
         {/* Category Registration Section Title */}
         <View style={styles.sectionHeaderRow}>
           <View>
-            <Text style={styles.sectionTitle}>Select Healthcare Category to Register</Text>
+            <Text style={styles.sectionTitle}>Healthcare Service Categories</Text>
             <Text style={styles.sectionSubtitle}>
-              Direct step-by-step registration for your medical facility or practice
+              Tap any category to open its live dashboard and facility information fields
             </Text>
           </View>
         </View>
 
         {/* 3 Dedicated Category Registration Cards */}
         <View style={styles.categoryCardsList}>
-          {REGISTRATION_CATEGORIES.map((cat) => (
-            <Pressable
-              key={cat.id}
-              style={[
-                styles.categoryCard,
-                { borderColor: cat.borderColor, shadowColor: cat.color },
-              ]}
-              onPress={() => navigation.navigate(cat.route as any)}
-              accessibilityRole="button"
-              accessibilityLabel={`Register ${cat.title}`}
-              hitSlop={8}
-            >
-              <View style={styles.cardHeaderRow}>
-                <View style={[styles.cardIconWrap, { backgroundColor: cat.lightBg }]}>
-                  <Ionicons name={cat.icon} size={24} color={cat.color} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <View style={styles.cardTitleRow}>
-                    <Text style={styles.cardTitle}>{cat.title}</Text>
-                    <View style={[styles.badgePill, { backgroundColor: cat.lightBg }]}>
-                      <Text style={[styles.badgeText, { color: cat.color }]}>
-                        {cat.badge}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.cardSubtitle}>{cat.subtitle}</Text>
-                </View>
-              </View>
+          {REGISTRATION_CATEGORIES.map((cat) => {
+            const isRegistered = isCategoryRegistered(cat.id);
+            const activeProfile =
+              cat.id === 'hospital'
+                ? hospitalProfile
+                : cat.id === 'doctor'
+                ? doctorProfile
+                : pharmacyProfile;
 
-              {/* Feature Highlights */}
-              <View style={styles.featureChipsRow}>
-                {cat.features.map((feat, idx) => (
-                  <View key={idx} style={styles.featureChip}>
-                    <View style={[styles.featureDot, { backgroundColor: cat.color }]} />
-                    <Text style={styles.featureChipText}>{feat}</Text>
-                  </View>
-                ))}
-              </View>
+            const handleOpenCategory = () => {
+              switchProviderMode(cat.id);
+              navigation.navigate(cat.route as any, {
+                mode: isRegistered ? 'dashboard' : 'register',
+              });
+            };
 
-              {/* Action Button */}
-              <View
-                style={[styles.registerActionBtn, { backgroundColor: cat.color }]}
+            return (
+              <Pressable
+                key={cat.id}
+                style={[
+                  styles.categoryCard,
+                  { borderColor: cat.borderColor, shadowColor: cat.color },
+                ]}
+                onPress={handleOpenCategory}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${cat.title}`}
+                hitSlop={8}
               >
-                <Text style={styles.registerActionBtnText}>{cat.btnText}</Text>
-                <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-              </View>
-            </Pressable>
-          ))}
+                <View style={styles.cardHeaderRow}>
+                  <View style={[styles.cardIconWrap, { backgroundColor: cat.lightBg }]}>
+                    <Ionicons name={cat.icon} size={24} color={cat.color} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={styles.cardTitleRow}>
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {isRegistered && activeProfile?.name ? activeProfile.name : cat.title}
+                      </Text>
+                      {isRegistered ? (
+                        <View style={[styles.badgePill, { backgroundColor: '#DCFCE7' }]}>
+                          <Ionicons name="checkmark-circle" size={11} color="#16A34A" />
+                          <Text style={[styles.badgeText, { color: '#15803D' }]}>
+                            REGISTERED
+                          </Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.badgePill, { backgroundColor: cat.lightBg }]}>
+                          <Text style={[styles.badgeText, { color: cat.color }]}>
+                            {cat.badge}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.cardSubtitle}>
+                      {isRegistered && activeProfile?.licenseNumber
+                        ? `License: ${activeProfile.licenseNumber} • ${activeProfile.city || 'Bengaluru'}`
+                        : cat.subtitle}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Feature Highlights */}
+                <View style={styles.featureChipsRow}>
+                  {cat.features.map((feat, idx) => (
+                    <View key={idx} style={styles.featureChip}>
+                      <View style={[styles.featureDot, { backgroundColor: cat.color }]} />
+                      <Text style={styles.featureChipText}>{feat}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Action Button */}
+                <View style={styles.actionRowContainer}>
+                  <Pressable
+                    style={[styles.registerActionBtn, { backgroundColor: cat.color, flex: 1 }]}
+                    onPress={handleOpenCategory}
+                  >
+                    <Ionicons
+                      name={isRegistered ? 'speedometer' : 'create-outline'}
+                      size={15}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.registerActionBtnText}>
+                      {isRegistered
+                        ? `Open ${cat.name} Dashboard & Fields`
+                        : cat.btnText}
+                    </Text>
+                    <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                  </Pressable>
+
+                  {isRegistered && (
+                    <Pressable
+                      style={[styles.secondaryEditBtn, { borderColor: cat.color }]}
+                      onPress={() => {
+                        switchProviderMode(cat.id);
+                        navigation.navigate(cat.route as any, { mode: 'edit' });
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Edit ${cat.name} registration fields`}
+                    >
+                      <Ionicons name="create-outline" size={14} color={cat.color} />
+                      <Text style={[styles.secondaryEditBtnText, { color: cat.color }]}>
+                        Update Changes
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
 
         {/* Already Registered / Live Operations Access */}
@@ -168,7 +234,12 @@ export default function AuthScreen() {
 
           <Pressable
             style={styles.enterLiveOpsBtn}
-            onPress={() => navigation.navigate('Main', { screen: 'Home' } as any)}
+            onPress={() => {
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Main', params: { screen: 'Home' } }],
+              });
+            }}
             accessibilityLabel="Enter Live Operations Dashboard"
             hitSlop={8}
           >
@@ -334,18 +405,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
     gap: 6,
   },
   cardTitle: {
+    flex: 1,
+    marginRight: 6,
     fontSize: 16,
     fontWeight: '800',
     color: '#0F172A',
   },
   badgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radius.xs,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   badgeText: {
     fontSize: 9,
@@ -389,19 +466,42 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#475569',
   },
+  actionRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
   registerActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
+    gap: 7,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: radius.md,
-    marginTop: 4,
   },
   registerActionBtnText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  secondaryEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    backgroundColor: '#FFFFFF',
+  },
+  secondaryEditBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   alreadyRegisteredCard: {
     backgroundColor: '#FFFFFF',
@@ -416,7 +516,7 @@ const styles = StyleSheet.create({
   },
   alreadyRegisteredHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 12,
   },
   alreadyRegisteredIconWrap: {

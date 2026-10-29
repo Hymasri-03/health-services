@@ -20,13 +20,16 @@ import PharmacyInventoryScreen from '../screens/pharmacy/PharmacyInventoryScreen
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import SupportChatScreen from '../screens/support/SupportChatScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import { useApp } from '../context/AppContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function AppNavigator() {
+  const { isAnyRegistered } = useApp();
+
   return (
     <Stack.Navigator
-      initialRouteName="Auth"
+      initialRouteName={isAnyRegistered ? 'Main' : 'Auth'}
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },

@@ -42,6 +42,14 @@ interface AppContextValue {
   // Provider Profile & Mode Switcher
   provider: MedicalProvider;
   providerType: ProviderType;
+  hospitalProfile: MedicalProvider;
+  doctorProfile: MedicalProvider;
+  pharmacyProfile: MedicalProvider;
+  registeredCategories: Record<ProviderType, boolean>;
+  isAnyRegistered: boolean;
+  isCategoryRegistered: (type: ProviderType) => boolean;
+  setCategoryRegistered: (type: ProviderType, registered: boolean) => void;
+  resetAllRegistrations: () => void;
   switchProviderMode: (type: ProviderType) => void;
   toggleOnlineAvailability: () => void;
   updateProviderProfile: (data: Partial<MedicalProvider>) => void;
@@ -114,6 +122,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hospitalProfile, setHospitalProfile] = useState<MedicalProvider>(mockHospitalProvider);
   const [doctorProfile, setDoctorProfile] = useState<MedicalProvider>(mockDoctorProvider);
   const [pharmacyProfile, setPharmacyProfile] = useState<MedicalProvider>(mockPharmacyProvider);
+
+  // Track registration status for each healthcare category - starts as false by default so new providers can register
+  const [registeredCategories, setRegisteredCategories] = useState<Record<ProviderType, boolean>>({
+    hospital: false,
+    doctor: false,
+    pharmacy: false,
+  });
+
+  const isCategoryRegistered = (type: ProviderType) => {
+    return Boolean(registeredCategories[type]);
+  };
+
+  const isAnyRegistered = Boolean(
+    registeredCategories.hospital || registeredCategories.doctor || registeredCategories.pharmacy
+  );
+
+  const setCategoryRegistered = (type: ProviderType, registered: boolean) => {
+    setRegisteredCategories((prev) => ({ ...prev, [type]: registered }));
+  };
+
+  const resetAllRegistrations = () => {
+    setRegisteredCategories({
+      hospital: false,
+      doctor: false,
+      pharmacy: false,
+    });
+    setProvider(mockHospitalProvider);
+    setProviderType('hospital');
+  };
 
   // Hospital state
   const [doctors, setDoctors] = useState<HospitalDoctor[]>(initialHospitalDoctors);
@@ -381,14 +418,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Financials calculation
   const earnings = useMemo<MedicalEarningsSummary>(() => {
-    // Mode-specific earnings
     let today = 0;
     let weekly = 0;
     let monthly = 0;
-    let pending = 0;
+    let totalWithdrawn = 0;
 
     transactions.forEach((tx) => {
-      if (tx.netPayout > 0) {
+      if (tx.type === 'bank_withdrawal') {
+        totalWithdrawn += Math.abs(tx.netPayout);
+      } else if (tx.netPayout > 0) {
         today += tx.netPayout;
         weekly += tx.netPayout * 3.5;
         monthly += tx.netPayout * 12;
@@ -398,14 +436,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     today = Math.round(today);
     weekly = Math.round(weekly);
     monthly = Math.round(monthly);
-    pending = Math.round(today * 1.8);
+    // Baseline pool from previous week operations + today's positive earnings minus all withdrawals
+    const baseAccumulated = Math.round(18500 + today * 1.5);
+    const pending = Math.max(0, baseAccumulated - totalWithdrawn);
+    const completed = 34500 + totalWithdrawn;
 
     return {
       todayEarnings: today,
       weeklyEarnings: weekly,
       monthlyEarnings: monthly,
       pendingPayout: pending,
-      completedPayouts: 34500,
+      completedPayouts: completed,
       platformFeePerOrder: 50,
       transactions,
     };
@@ -413,11 +454,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const requestPayout = (amount: number) => {
     if (amount <= 0 || amount > earnings.pendingPayout) return false;
+    const refCode = `WTH-${Date.now().toString().slice(-4)}`;
     const newTx: MedicalTransaction = {
-      id: `WTH-${Date.now().toString().slice(-4)}`,
-      bookingId: `WTH-${Date.now().toString().slice(-4)}`,
+      id: refCode,
+      bookingId: refCode,
       type: 'bank_withdrawal',
-      title: `Bank Settlement (${provider.bankDetails.bankName} ••••${provider.bankDetails.accountNumber.slice(-4)})`,
+      title: `Bank Settlement (${provider.bankDetails?.bankName || 'Verified Bank'} ••••${(provider.bankDetails?.accountNumber || '1234').slice(-4)})`,
       grossAmount: -amount,
       platformFee: 0,
       netPayout: -amount,
@@ -427,6 +469,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       serviceDescription: 'Requested direct bank settlement to verified account',
     };
     setTransactions((prev) => [newTx, ...prev]);
+
+    // Dispatch real-time financial notification
+    const withdrawalNotif: MedicalNotification = {
+      id: `notif-${Date.now()}`,
+      title: 'Withdrawal Initiated',
+      message: `₹${amount.toLocaleString('en-IN')} requested for direct disbursal to ${provider.bankDetails?.bankName || 'Bank'}. Ref: ${refCode}`,
+      timestamp: 'Just now',
+      type: 'payout',
+      read: false,
+    };
+    setNotifications((prev) => [withdrawalNotif, ...prev]);
     return true;
   };
 
@@ -479,6 +532,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppContextValue = {
     provider,
     providerType,
+    hospitalProfile,
+    doctorProfile,
+    pharmacyProfile,
+    registeredCategories,
+    isAnyRegistered,
+    isCategoryRegistered,
+    setCategoryRegistered,
+    resetAllRegistrations,
     switchProviderMode,
     toggleOnlineAvailability,
     updateProviderProfile,
@@ -491,6 +552,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     registerProvider: (data) => {
       const targetType = data.type || providerType;
+      setRegisteredCategories((prev) => ({ ...prev, [targetType]: true }));
       setProvider((prev) => {
         const updated = {
           ...prev,
@@ -506,9 +568,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProviderType(targetType);
     },
     logout: () => {
-      // resets to default hospital
-      setProvider(mockHospitalProvider);
-      setProviderType('hospital');
+      resetAllRegistrations();
     },
 
     // Hospital

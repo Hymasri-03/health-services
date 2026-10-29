@@ -281,11 +281,11 @@ export default function RegisterDoctorScreen() {
         >
           <Ionicons name="arrow-back" size={20} color={colors.text} />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
             {isEditing ? 'Edit Doctor Profile' : 'Register Doctor'}
           </Text>
-          <Text style={styles.headerSubtitle}>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
             Medical practitioner registration, license & schedule
           </Text>
         </View>

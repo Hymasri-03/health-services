@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -13,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radius, spacing } from '../../theme/colors';
 import Card from '../../components/Card';
@@ -120,23 +122,58 @@ export default function DoctorRegistrationScreen({
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<DoctorRegistrationRouteProp>();
-  const { provider, addDoctor, updateDoctor, registerProvider, switchProviderMode, toggleOnlineAvailability } = useApp();
+  const { provider, doctorProfile, isCategoryRegistered, addDoctor, updateDoctor, registerProvider, switchProviderMode, toggleOnlineAvailability } = useApp();
 
   const existingDoctor = route.params?.doctor;
   const isEditing = Boolean(existingDoctor);
+  const isDocRegistered = isCategoryRegistered('doctor');
 
   // Step Tracker state
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [isRegistered, setIsRegistered] = useState<boolean>(
+    route.params?.mode === 'edit' || route.params?.mode === 'register' || route.params?.mode === 'add' || isEditing
+      ? false
+      : isDocRegistered
+  );
+
+  useEffect(() => {
+    if (route.params?.mode === 'edit' || route.params?.mode === 'register' || route.params?.mode === 'add' || isEditing) {
+      setIsRegistered(false);
+    } else if (isDocRegistered) {
+      setIsRegistered(true);
+    }
+  }, [route.params?.mode, isDocRegistered, isEditing]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (embedded) return;
+      const onBackPress = () => {
+        if (!isRegistered && currentStep > 1) {
+          handlePrevStep();
+          return true;
+        }
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('Main', { screen: 'Home' } as any);
+        }
+        return true;
+      };
+      const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => backSub.remove();
+    }, [embedded, isRegistered, currentStep, navigation])
+  );
+
+  const activeDoc = doctorProfile || provider;
 
   // Step 1: Doctor Practice Option / Field & Personal Identity
   const [doctorOption, setDoctorOption] = useState<string>(DOCTOR_PRACTICE_OPTIONS[0].id);
   const [practiceModality, setPracticeModality] = useState<string>(PRACTICE_MODALITY_OPTIONS[0]);
   const [name, setName] = useState(
-    existingDoctor?.name || (provider.type === 'doctor' ? provider.name : 'Dr. Rajesh Sharma'),
+    existingDoctor?.name || activeDoc?.name || 'Dr. Vikram Sengupta, MD, DM'
   );
   const [photo, setPhoto] = useState(
-    existingDoctor?.photo || DOCTOR_AVATAR_PRESETS[0].uri,
+    existingDoctor?.photo || activeDoc?.avatar || DOCTOR_AVATAR_PRESETS[4].uri
   );
   const isCustomPhoto = !DOCTOR_AVATAR_PRESETS.some((p) => p.uri === photo);
 
@@ -150,40 +187,41 @@ export default function DoctorRegistrationScreen({
     existingDoctor?.gender || 'Male',
   );
   const [phone, setPhone] = useState(
-    existingDoctor?.phone || (provider.type === 'doctor' ? provider.phone.replace('+91 ', '') : ''),
+    existingDoctor?.phone || (activeDoc?.phone ? activeDoc.phone.replace('+91 ', '') : '9845078901')
   );
   const [email, setEmail] = useState(
-    existingDoctor?.email || (provider.type === 'doctor' ? provider.email : 'dr.rajesh@onebuddy.health'),
+    existingDoctor?.email || activeDoc?.email || 'dr.vikram@onebuddy.health'
   );
   const [specialization, setSpecialization] = useState(
-    existingDoctor?.specialization || 'Cardiology',
+    existingDoctor?.specialization || activeDoc?.specialization || 'Senior Interventional Cardiologist & Physician'
   );
   const [qualification, setQualification] = useState(
-    existingDoctor?.qualification || 'MBBS, MD (Medicine), DM (Cardiology)',
+    existingDoctor?.qualification || activeDoc?.qualifications || 'MBBS, MD (Gen Med), DM (Cardiology - AIIMS Delhi)'
   );
   const [experience, setExperience] = useState(
-    String(existingDoctor?.experience || '12'),
+    String(existingDoctor?.experience || activeDoc?.experienceYears || '14')
   );
 
   // Step 2: Medical Credentials & Council
   const [councilRegNumber, setCouncilRegNumber] = useState(
-    existingDoctor?.councilRegistrationNumber ||
-      (provider.type === 'doctor' ? provider.licenseNumber : 'MCI-2019-84729'),
+    existingDoctor?.councilRegistrationNumber || activeDoc?.licenseNumber || 'MCI-REG-2012-74921'
   );
   const [medicalCouncil, setMedicalCouncil] = useState(MEDICAL_COUNCILS[0]);
-  const [councilRegYear, setCouncilRegYear] = useState('2014');
-  const [affiliatedHospital, setAffiliatedHospital] = useState('Metro Apex Multi-Specialty Hospital');
+  const [councilRegYear, setCouncilRegYear] = useState('2012');
+  const [affiliatedHospital, setAffiliatedHospital] = useState('Apollo LifeCare Super Speciality Hospital');
 
   // Step 3: Clinic Details & Fees
-  const [clinicName, setClinicName] = useState('Dr. Rajesh Sharma Cardiology Clinic');
-  const [clinicAddress, setClinicAddress] = useState('Suite 204, Meditech Plaza, Indiranagar, Bengaluru');
+  const [clinicName, setClinicName] = useState('Meditrust Clinic & Cardio Care');
+  const [clinicAddress, setClinicAddress] = useState(activeDoc?.address || 'Suite 302, Meditrust Clinic, 100ft Road, Indiranagar, Bengaluru');
   const [consultationFee, setConsultationFee] = useState(
-    String(existingDoctor?.consultationFee || '750'),
+    String(existingDoctor?.consultationFee || '800')
   );
   const [onlineFee, setOnlineFee] = useState(
-    String(existingDoctor?.onlineConsultationFee || '600'),
+    String(existingDoctor?.onlineConsultationFee || activeDoc?.consultationFee || '750')
   );
-  const [homeVisitFee, setHomeVisitFee] = useState('1200');
+  const [homeVisitFee, setHomeVisitFee] = useState(
+    String(activeDoc?.homeVisitFee || '1500')
+  );
   const [slotDuration, setSlotDuration] = useState(
     String(existingDoctor?.slotDurationMinutes || '15'),
   );
@@ -199,10 +237,10 @@ export default function DoctorRegistrationScreen({
   const [uploadedDegreeDoc, setUploadedDegreeDoc] = useState('Medical_PostGraduate_Degree.pdf');
 
   // Step 5: Bank Settlement & Medical Ethics
-  const [bankName, setBankName] = useState('ICICI Bank');
-  const [accountNumber, setAccountNumber] = useState('002105018934');
-  const [ifscCode, setIfscCode] = useState('ICIC0000021');
-  const [upiId, setUpiId] = useState('dr.rajesh@icici');
+  const [bankName, setBankName] = useState(activeDoc?.bankDetails?.bankName || 'State Bank of India');
+  const [accountNumber, setAccountNumber] = useState(activeDoc?.bankDetails?.accountNumber || '381920491823');
+  const [ifscCode, setIfscCode] = useState(activeDoc?.bankDetails?.ifscCode || 'SBIN0004512');
+  const [upiId, setUpiId] = useState(activeDoc?.bankDetails?.upiId || 'drvikram@oksbi');
   const [isDeclared, setIsDeclared] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -379,6 +417,12 @@ export default function DoctorRegistrationScreen({
 
     switchProviderMode('doctor');
     setIsRegistered(true);
+    Alert.alert(
+      isDocRegistered ? 'Changes Updated' : 'Registration Complete',
+      isDocRegistered
+        ? 'Your doctor profile, fees, and practice credentials have been updated successfully.'
+        : 'Doctor registration completed successfully. Welcome to OneBuddy Medical!'
+    );
     onComplete?.();
   };
 
@@ -392,15 +436,28 @@ export default function DoctorRegistrationScreen({
     return (
       <ContainerComponent {...(containerProps as any)}>
         {/* Doctor Dashboard Header */}
-        <View style={styles.topHeader}>
+        <View style={[styles.topHeader, embedded && styles.topHeaderEmbedded]}>
+          {!embedded && (
+            <Pressable
+              style={styles.backBtn}
+              onPress={() => {
+                navigation.navigate('Main', { screen: 'Home' } as any);
+              }}
+              accessibilityLabel="Back to Live Operations"
+              hitSlop={8}
+            >
+              <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+            </Pressable>
+          )}
+
           <View style={styles.headerTitleContainer}>
             <View style={styles.headerTitleRow}>
-              <Ionicons name="medkit" size={16} color="#60A5FA" />
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Ionicons name="medkit" size={16} color="#2563EB" />
+              <Text style={[styles.headerTitle, embedded && { color: '#0F172A' }]} numberOfLines={1}>
                 {name}
               </Text>
             </View>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
+            <Text style={[styles.headerSubtitle, embedded && { color: '#64748B' }]} numberOfLines={1}>
               Registered Doctor • {specialization} • Reg: {councilRegNumber}
             </Text>
           </View>
@@ -476,6 +533,16 @@ export default function DoctorRegistrationScreen({
                 </Text>
               </Pressable>
             </View>
+
+            {/* Quick Action to Update Changes */}
+            <Pressable
+              style={styles.heroUpdateBtn}
+              onPress={() => setIsRegistered(false)}
+              accessibilityLabel="Update Doctor Changes"
+            >
+              <Ionicons name="create-outline" size={16} color="#2563EB" />
+              <Text style={styles.heroUpdateBtnText}>Update Doctor Details & Fees</Text>
+            </Pressable>
           </Card>
 
           {/* Consultation Fee Metrics */}
@@ -537,11 +604,13 @@ export default function DoctorRegistrationScreen({
               }}
               accessibilityLabel="View Consultations"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#DBEAFE' }]}>
-                <Ionicons name="videocam" size={22} color="#2563EB" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#DBEAFE' }]}>
+                  <Ionicons name="videocam" size={22} color="#2563EB" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Video Consults</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Incoming teleconsultation queue</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Video Consults</Text>
-              <Text style={styles.actionCardSub}>Incoming teleconsultation queue</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={styles.actionLinkText}>Open Queue</Text>
                 <Ionicons name="arrow-forward" size={12} color="#2563EB" />
@@ -556,11 +625,13 @@ export default function DoctorRegistrationScreen({
               }}
               accessibilityLabel="Manage Home Visits"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#FEF3C7' }]}>
-                <Ionicons name="car" size={22} color="#D97706" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="car" size={22} color="#D97706" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Home Visits Desk</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>House-call appointments nearby</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Home Visits Desk</Text>
-              <Text style={styles.actionCardSub}>House-call appointments nearby</Text>
               <View style={styles.actionLinkRow}>
                 <Text style={[styles.actionLinkText, { color: '#D97706' }]}>Open Visits</Text>
                 <Ionicons name="arrow-forward" size={12} color="#D97706" />
@@ -569,17 +640,40 @@ export default function DoctorRegistrationScreen({
 
             <Pressable
               style={styles.actionCard}
-              onPress={() => setIsRegistered(false)}
-              accessibilityLabel="Edit Doctor Profile"
+              onPress={() => {
+                switchProviderMode('doctor');
+                navigation.navigate('Main', { screen: 'Home' } as any);
+              }}
+              accessibilityLabel="Enter Live Operations Hub"
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: '#F1F5F9' }]}>
-                <Ionicons name="create-outline" size={22} color="#475569" />
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="pulse" size={22} color="#2563EB" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Live Operations Hub</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Teleconsults & schedule desk</Text>
               </View>
-              <Text style={styles.actionCardTitle}>Edit Credentials</Text>
-              <Text style={styles.actionCardSub}>Update fees, schedule & bio</Text>
               <View style={styles.actionLinkRow}>
-                <Text style={[styles.actionLinkText, { color: '#475569' }]}>Edit Setup</Text>
-                <Ionicons name="arrow-forward" size={12} color="#475569" />
+                <Text style={[styles.actionLinkText, { color: '#2563EB' }]}>Enter Live Ops</Text>
+                <Ionicons name="arrow-forward" size={12} color="#2563EB" />
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.actionCard}
+              onPress={() => setIsRegistered(false)}
+              accessibilityLabel="Update Doctor Profile"
+            >
+              <View>
+                <View style={[styles.actionIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="create-outline" size={22} color="#2563EB" />
+                </View>
+                <Text style={styles.actionCardTitle} numberOfLines={1}>Update Changes</Text>
+                <Text style={styles.actionCardSub} numberOfLines={2}>Update fees, schedule & bio</Text>
+              </View>
+              <View style={styles.actionLinkRow}>
+                <Text style={[styles.actionLinkText, { color: '#2563EB' }]}>Update Changes</Text>
+                <Ionicons name="arrow-forward" size={12} color="#2563EB" />
               </View>
             </Pressable>
           </View>
@@ -630,13 +724,13 @@ export default function DoctorRegistrationScreen({
             onPress={() => {
               if (currentStep > 1) {
                 handlePrevStep();
-              } else if (navigation.canGoBack()) {
-                navigation.goBack();
+              } else if (isDocRegistered) {
+                setIsRegistered(true);
               } else {
                 navigation.navigate('Main', { screen: 'Home' } as any);
               }
             }}
-            accessibilityLabel={currentStep > 1 ? `Back to Step ${currentStep - 1}` : 'Back'}
+            accessibilityLabel={currentStep > 1 ? `Back to Step ${currentStep - 1}` : (isDocRegistered ? 'Back to Dashboard' : 'Back to Live Operations')}
             hitSlop={8}
           >
             <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
@@ -645,15 +739,21 @@ export default function DoctorRegistrationScreen({
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="medkit" size={17} color="#60A5FA" />
-              <Text style={styles.headerTitle}>Doctor Registration</Text>
+              <Text style={styles.headerTitle}>
+                {isDocRegistered ? 'Update Doctor Details' : 'Doctor Registration'}
+              </Text>
             </View>
             <Text style={styles.headerSubtitle}>
-              Step {currentStep} of 5: {STEPS[currentStep - 1]?.title}
+              {isDocRegistered
+                ? `Update Step ${currentStep} of 5: ${STEPS[currentStep - 1]?.title}`
+                : `Step ${currentStep} of 5: ${STEPS[currentStep - 1]?.title}`}
             </Text>
           </View>
 
           <View style={styles.stepBadgePill}>
-            <Text style={styles.stepBadgeText}>Step {currentStep}/5</Text>
+            <Text style={styles.stepBadgeText}>
+              {isDocRegistered ? `Update ${currentStep}/5` : `Step ${currentStep}/5`}
+            </Text>
           </View>
         </View>
       )}
@@ -1485,10 +1585,12 @@ export default function DoctorRegistrationScreen({
                 <Pressable
                   style={[styles.primaryStepBtn, { flex: 1, marginTop: 0, backgroundColor: '#2563EB' }]}
                   onPress={handleRegisterDoctor}
-                  accessibilityLabel="Complete Doctor Registration"
+                  accessibilityLabel={isDocRegistered ? 'Update Doctor Changes' : 'Complete Doctor Registration'}
                 >
-                  <Ionicons name="medkit" size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryStepBtnText} numberOfLines={1}>Complete</Text>
+                  <Ionicons name={isDocRegistered ? 'save-outline' : 'medkit'} size={18} color="#FFFFFF" />
+                  <Text style={styles.primaryStepBtnText} numberOfLines={1}>
+                    {isDocRegistered ? 'Update Changes' : 'Complete Registration'}
+                  </Text>
                 </Pressable>
               </View>
             </>
@@ -1514,6 +1616,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
     gap: 8,
+  },
+  topHeaderEmbedded: {
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#E2E8F0',
   },
   backBtn: {
     width: 36,
@@ -2239,14 +2345,18 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 3,
     textAlign: 'center',
+    minHeight: 28,
   },
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
+    rowGap: 10,
   },
   actionCard: {
-    width: '48%',
+    width: '48.5%',
+    minHeight: 145,
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -2354,5 +2464,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#EF4444',
     fontWeight: '600',
+  },
+  heroUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    marginTop: spacing.md,
+  },
+  heroUpdateBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
   },
 });

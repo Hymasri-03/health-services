@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  BackHandler,
   FlatList,
   Modal,
   Pressable,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../../context/AppContext';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -90,6 +91,59 @@ export default function BookingsOrdersScreen() {
   const [medDosageInput, setMedDosageInput] = useState('625 mg');
   const [medFreqInput, setMedFreqInput] = useState('1-0-1 (After food)');
   const [medDurationInput, setMedDurationInput] = useState('5 days');
+
+  // Universal Back Navigation Helper
+  const handleGoBack = useCallback(() => {
+    if (rescheduleModalVisible) {
+      setRescheduleModalVisible(false);
+      return true;
+    }
+    if (rejectRxModalVisible) {
+      setRejectRxModalVisible(false);
+      return true;
+    }
+    if (substitutionModalVisible) {
+      setSubstitutionModalVisible(false);
+      return true;
+    }
+    if (etaModalVisible) {
+      setEtaModalVisible(false);
+      return true;
+    }
+    if (rxModalVisible) {
+      setRxModalVisible(false);
+      return true;
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return true;
+    }
+
+    const state = navigation.getState();
+    const routeNames = ((state as any)?.routeNames || []) as string[];
+    if (routeNames.includes('Home')) {
+      (navigation as any).navigate('Home');
+    } else {
+      (navigation as any).navigate('Main', { screen: 'Home' });
+    }
+    return true;
+  }, [
+    navigation,
+    rescheduleModalVisible,
+    rejectRxModalVisible,
+    substitutionModalVisible,
+    etaModalVisible,
+    rxModalVisible,
+  ]);
+
+  // Mobile Hardware Back Button Handler
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', handleGoBack);
+      return () => sub.remove();
+    }, [handleGoBack])
+  );
 
   // ==========================================
   // 1. HOSPITAL: OP Booking Render
@@ -912,14 +966,8 @@ export default function BookingsOrdersScreen() {
       <View style={styles.screenHeader}>
         <Pressable
           style={styles.backBtn}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.navigate('Main', { screen: 'Home' } as any);
-            }
-          }}
-          accessibilityLabel="Back to Home"
+          onPress={handleGoBack}
+          accessibilityLabel="Back to Previous"
           hitSlop={8}
         >
           <Ionicons name="arrow-back" size={20} color={colors.text} />
@@ -1752,11 +1800,10 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginVertical: 6,
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
   },
   metaItem: {
     flexDirection: 'row',

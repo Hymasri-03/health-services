@@ -230,9 +230,9 @@ export default function PharmacyInventoryScreen() {
         >
           <Ionicons name="arrow-back" size={20} color={colors.text} />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Pharmacy Inventory</Text>
-          <Text style={styles.headerSubtitle}>Medicines & clinical equipment catalog</Text>
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>Pharmacy Inventory</Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>Medicines & clinical equipment catalog</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <Pressable
@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: colors.text,
   },

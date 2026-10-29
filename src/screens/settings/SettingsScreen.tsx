@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  BackHandler,
   Image,
   Modal,
   Pressable,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../../context/AppContext';
 import { colors, radius, spacing } from '../../theme/colors';
@@ -46,20 +47,40 @@ export default function SettingsScreen() {
     setHoursModal(false);
   };
 
+  const handleGoBack = useCallback(() => {
+    if (hoursModal) {
+      setHoursModal(false);
+      return true;
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return true;
+    }
+    const state = navigation.getState();
+    const routeNames = ((state as any)?.routeNames || []) as string[];
+    if (routeNames.includes('Home')) {
+      (navigation as any).navigate('Home');
+    } else {
+      (navigation as any).navigate('Main', { screen: 'Home' });
+    }
+    return true;
+  }, [navigation, hoursModal]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', handleGoBack);
+      return () => sub.remove();
+    }, [handleGoBack])
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Settings Header */}
       <View style={styles.topHeader}>
         <Pressable
           style={styles.backBtn}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.navigate('Main', { screen: 'Home' } as any);
-            }
-          }}
-          accessibilityLabel="Back to Home"
+          onPress={handleGoBack}
+          accessibilityLabel="Back to Previous"
           hitSlop={8}
         >
           <Ionicons name="arrow-back" size={20} color={colors.text} />

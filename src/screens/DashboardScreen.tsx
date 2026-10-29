@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  BackHandler,
   Image,
   Pressable,
   RefreshControl,
@@ -10,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { colors, radius, spacing } from '../theme/colors';
@@ -24,7 +25,7 @@ const HEALTHCARE_CATEGORIES = [
     title: 'Hospital',
     badge: 'Super Speciality',
     subtitle: 'Inpatient Admissions, ICU Beds & 24x7 Emergency',
-    features: ['180 Total Beds', '24 ICU Beds', '6 OT Surgical Suites'],
+    features: ['CEA Registered', '24x7 Emergency Care', 'Inpatient & ICU Care'],
     icon: 'business' as const,
     color: colors.hospitalRed,
     lightBg: colors.hospitalRedLight,
@@ -60,6 +61,7 @@ export default function DashboardScreen() {
   const {
     provider,
     providerType,
+    isCategoryRegistered,
     switchProviderMode,
     toggleOnlineAvailability,
     opBookings,
@@ -90,6 +92,17 @@ export default function DashboardScreen() {
     }, REFRESH_INTERVAL_SECONDS * 1000);
     return () => clearInterval(timer);
   }, [onRefresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        // Prevent falling back to registration or auth screens from Home
+        return true;
+      };
+      const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => backSub.remove();
+    }, [])
+  );
 
   // Bottom navigation height + 16px padding so the last item is fully visible above bottom nav
   const bottomNavHeight = 60 + Math.max(insets.bottom, 8);
@@ -143,11 +156,47 @@ export default function DashboardScreen() {
             onPress={() => navigation.navigate('Account')}
             style={styles.avatarWrap}
           >
-            <Image
-              source={{ uri: provider.avatar }}
-              style={styles.providerAvatar}
-              resizeMode="cover"
-            />
+            {isCategoryRegistered(providerType) ? (
+              <Image
+                source={{ uri: provider.avatar }}
+                style={styles.providerAvatar}
+                resizeMode="cover"
+              />
+            ) : (
+              <View
+                style={[
+                  styles.providerAvatar,
+                  {
+                    backgroundColor:
+                      providerType === 'hospital'
+                        ? colors.hospitalRedLight
+                        : providerType === 'doctor'
+                        ? colors.medicalBlueLight
+                        : colors.pharmacyTealLight,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    providerType === 'hospital'
+                      ? 'business'
+                      : providerType === 'doctor'
+                      ? 'medkit'
+                      : 'flask'
+                  }
+                  size={20}
+                  color={
+                    providerType === 'hospital'
+                      ? colors.hospitalRed
+                      : providerType === 'doctor'
+                      ? colors.medicalBlue
+                      : colors.pharmacyTeal
+                  }
+                />
+              </View>
+            )}
             {/* Online indicator dot on Avatar */}
             <View
               style={[
@@ -159,9 +208,15 @@ export default function DashboardScreen() {
           <View style={styles.providerNameBlock}>
             <View style={styles.nameRow}>
               <Text style={styles.providerTitle} numberOfLines={1}>
-                {provider.name}
+                {isCategoryRegistered(providerType)
+                  ? provider.name
+                  : providerType === 'hospital'
+                  ? 'Hospital Services'
+                  : providerType === 'doctor'
+                  ? 'Doctor Practice'
+                  : 'Pharmacy Store'}
               </Text>
-              {provider.approvalStatus === 'approved' && (
+              {isCategoryRegistered(providerType) && provider.approvalStatus === 'approved' && (
                 <Ionicons name="checkmark-circle" size={15} color={colors.primary} style={{ marginLeft: 3 }} />
               )}
             </View>
@@ -319,6 +374,7 @@ export default function DashboardScreen() {
           <View style={styles.categoriesGrid}>
             {HEALTHCARE_CATEGORIES.map((cat) => {
               const isActive = providerType === cat.id;
+              const isRegistered = isCategoryRegistered(cat.id);
               return (
                 <Pressable
                   key={cat.id}
@@ -345,7 +401,7 @@ export default function DashboardScreen() {
                     </View>
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <View style={styles.categoryTitleRow}>
-                        <Text style={styles.categoryTitle}>{cat.title}</Text>
+                        <Text style={styles.categoryTitle} numberOfLines={1}>{cat.title}</Text>
                         {isActive ? (
                           <View style={[styles.activePillBadge, { backgroundColor: cat.color }]}>
                             <Ionicons name="checkmark-circle" size={11} color="#FFFFFF" />
@@ -375,9 +431,9 @@ export default function DashboardScreen() {
                     ))}
                   </View>
 
-                  {/* Action button: Switch Category in Live Operation */}
+                  {/* Action buttons: Switch Category and Open Registered Profile & Fields */}
                   <View style={styles.categoryActionsRow}>
-                    <View
+                    <Pressable
                       style={[
                         styles.categorySwitchBtn,
                         { flex: 1 },
@@ -385,6 +441,7 @@ export default function DashboardScreen() {
                           ? { backgroundColor: cat.color, borderColor: cat.color }
                           : { backgroundColor: colors.background, borderColor: colors.border },
                       ]}
+                      onPress={() => switchProviderMode(cat.id)}
                     >
                       <Ionicons
                         name={isActive ? 'radio-button-on' : 'swap-horizontal'}
@@ -397,9 +454,51 @@ export default function DashboardScreen() {
                           isActive && { color: '#FFFFFF', fontWeight: '800' },
                         ]}
                       >
-                        {isActive ? `Current Live View: ${cat.title}` : `Tap Block to Activate ${cat.title}`}
+                        {isActive ? `Active: ${cat.title}` : `Activate ${cat.title}`}
                       </Text>
-                    </View>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.categorySwitchBtn,
+                        {
+                          backgroundColor: cat.lightBg,
+                          borderColor: cat.borderColor,
+                          paddingHorizontal: 12,
+                        },
+                      ]}
+                      onPress={() => {
+                        switchProviderMode(cat.id);
+                        const targetScreen =
+                          cat.id === 'hospital'
+                            ? 'HospitalRegistration'
+                            : cat.id === 'doctor'
+                            ? 'DoctorRegistration'
+                            : 'PharmacyRegistration';
+                        navigation.navigate(targetScreen as any, {
+                          mode: isRegistered ? 'dashboard' : 'register',
+                        });
+                      }}
+                      accessibilityLabel={
+                        isRegistered
+                          ? `Open ${cat.title} registered dashboard and fields`
+                          : `Register ${cat.title}`
+                      }
+                    >
+                      <Ionicons
+                        name={isRegistered ? 'create-outline' : 'create-outline'}
+                        size={14}
+                        color={cat.color}
+                      />
+                      <Text
+                        style={[
+                          styles.categorySwitchBtnText,
+                          { color: cat.color, fontWeight: '800' },
+                        ]}
+                      >
+                        {isRegistered ? 'Update Changes' : 'Register'}
+                      </Text>
+                    </Pressable>
                   </View>
                 </Pressable>
               );
@@ -469,10 +568,10 @@ export default function DashboardScreen() {
             />
             <StatCard
               label="Customer Rating"
-              value={`★ ${provider.rating}`}
+              value={isCategoryRegistered(providerType) ? `★ ${provider.rating}` : '★ --'}
               icon="star"
               color={colors.accentGold}
-              changeText={`${provider.totalReviews} Reviews`}
+              changeText={isCategoryRegistered(providerType) ? `${provider.totalReviews} Reviews` : 'New Provider'}
               onPress={() => navigation.navigate('Account')}
             />
           </View>
@@ -989,14 +1088,16 @@ const styles = StyleSheet.create({
   typeBadgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    flexWrap: 'wrap',
+    gap: 5,
     marginTop: 3,
   },
   roleBadge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: radius.xs,
+    justifyContent: 'center',
   },
   roleBadgeText: {
     fontSize: 9,
@@ -1006,10 +1107,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 6,
-    paddingVertical: 1.5,
+    paddingVertical: 2,
     borderRadius: radius.full,
     borderWidth: 1,
     gap: 3.5,
+    justifyContent: 'center',
   },
   onlineStatusDot: {
     width: 5.5,
@@ -1109,8 +1211,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 6,
   },
   categoryTitle: {
+    flex: 1,
+    marginRight: 6,
     fontSize: 16,
     fontWeight: '800',
     color: colors.text,
@@ -1174,6 +1279,7 @@ const styles = StyleSheet.create({
   },
   categoryActionsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     paddingTop: 8,
     borderTopWidth: 1,
@@ -1181,10 +1287,12 @@ const styles = StyleSheet.create({
   },
   categorySwitchBtn: {
     flex: 1,
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     borderRadius: radius.md,
     gap: 5,
     borderWidth: 1,
@@ -1264,11 +1372,13 @@ const styles = StyleSheet.create({
   },
   actionItem: {
     flex: 1,
+    minHeight: 96,
     backgroundColor: colors.card,
     borderRadius: radius.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: 4,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.borderLight,
   },

@@ -15,7 +15,7 @@ const Tab = createBottomTabNavigator<TabParamList>();
 
 export default function MainTabs() {
   const insets = useSafeAreaInsets();
-  const { providerType, opBookings, homeVisits, pharmacyOrders } = useApp();
+  const { providerType, opBookings, homeVisits, pharmacyOrders, isAnyRegistered } = useApp();
 
   let pendingCount = 0;
   if (providerType === 'hospital') {
@@ -42,6 +42,7 @@ export default function MainTabs() {
   return (
     <Tab.Navigator
       initialRouteName="Home"
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -67,22 +68,7 @@ export default function MainTabs() {
         },
       }}
     >
-      {/* 1. Dedicated Registration Portal directly on the first page */}
-      <Tab.Screen
-        name="Register"
-        component={RegistrationPortalScreen}
-        options={{
-          tabBarLabel: 'Registration',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'create' : 'create-outline'}
-              size={22}
-              color={color}
-            />
-          ),
-        }}
-      />
-      {/* 2. Live Operations Dashboard */}
+      {/* 1. Live Operations Dashboard (Primary / Default Tab) */}
       <Tab.Screen
         name="Home"
         component={DashboardScreen}
@@ -91,6 +77,29 @@ export default function MainTabs() {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'pulse' : 'pulse-outline'}
+              size={22}
+              color={color}
+            />
+          ),
+        }}
+      />
+      {/* 2. Healthcare Category Services & Registration Portals */}
+      <Tab.Screen
+        name="Register"
+        component={RegistrationPortalScreen}
+        options={{
+          tabBarLabel: isAnyRegistered ? 'Services' : 'Register',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={
+                focused
+                  ? isAnyRegistered
+                    ? 'apps'
+                    : 'create'
+                  : isAnyRegistered
+                  ? 'apps-outline'
+                  : 'create-outline'
+              }
               size={22}
               color={color}
             />
