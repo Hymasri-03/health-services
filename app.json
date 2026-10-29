@@ -10,7 +10,8 @@
     },
     "android": {},
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-status-bar"
     ]
   }
 }
